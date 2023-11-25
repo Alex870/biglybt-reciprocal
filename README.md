@@ -25,9 +25,9 @@ When the torrent is 100% complete, all rate limits are removed.  The expectation
 ### How to install 
 (as a user - no code compilation required)
 
-1. Navigate to your BiglyBT directory: `BiglyBT\plugins\`
+1. Download the latest `reciprocal_XXXXX.jar` release file from this github repositiory from the `release` folder.
 2. Select: **Tools -> Plugins -> Install from file**
-3. Locate the .jar release file downloaded from this github repositiory (release directory) and follow the wizard instructions.
+3. Locate the .jar release file downloaded from this github repositiory and follow the wizard instructions.
 4. Ensure plugin is enabled: **Tools -> Options -> Plugins -> Reciprocal**
 5. Make sure "Enable" is checked.
 6. Adjust parameters as desired and press `Save` button.
