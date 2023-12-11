@@ -16,7 +16,7 @@ This plugin for BiglyBT (formerly Azureus, Vuze) does the following for each tor
 #### The Results
 - In the case the peer has taken more data than they gave, the average upload speed to them will be kept at a rate lower than they are sending to force a catch up scenario to occur until a 1:1 up/down ratio is reached.  The further from a 1:1 ratio, the more severe the upload limiting will be until the metrics  are brought into compliance.
 - If the peer has sent you more data than you`ve sent to them, the upstream limit to them will be set higher than the speed sending you data.  This may nudge the ratio closer to 1:1.
-- For peers that do not send data, they are throttled down to a minimal stream of 0.5MB per sec.  This leaves the option open for them to reciprocate later.  But prevents and punishes significant leeching.
+- For peers that do not send data, they are throttled down to a minimal stream of 0.5KB per sec.  This leaves the option open for them to reciprocate later.  But prevents and punishes significant leeching.
 
 When the torrent is 100% complete, all rate limits are removed.  The expectation here is you already have a max share ratio set in BiglyBT so the torrent has a natural termination point, and you can reach that goal ASAP by lifting upload speed limits.
 
