@@ -116,6 +116,6 @@ Releases are built by GitHub Actions; there is no need to upload jars by hand or
 3. The **Build** workflow runs on the tag, builds `Reciprocal_0.4.0.jar` and creates a GitHub Release for the tag with the jar attached. Check progress in the repository's **Actions** tab; the release appears on the Releases page when it finishes (about a minute).
 4. Optionally edit the release on GitHub to paste the changelog section into its description (GitHub pre-fills it with a list of commits).
 
-To mark a build as a test version, tag it with a suffix such as `v0.4.0-beta1` and, after it is published, tick **Set as a pre-release** when editing the release on GitHub, so it isn't shown as **Latest**.
+To publish a test build, use a tag with a suffix such as `v0.4.0-beta1`. It is published as a **pre-release**: downloadable from the full releases list, but not shown as **Latest**, so ordinary users aren't sent to it.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the design and roadmap.
