@@ -115,8 +115,8 @@ Releases are made on the GitHub website; GitHub Actions builds the jar and attac
 6. For a test build, use a tag with a suffix such as `v0.4.0-beta1` and tick **Set as a pre-release**, so it isn't shown as **Latest**.
 7. Click **Publish release**.
 
-Within about a minute the **Build** workflow (see the **Actions** tab) attaches `Reciprocal_<tag without v>.jar` to the release's **Assets**. If the tag doesn't match `pluginVersion`, the workflow fails and nothing is attached: delete the release and its tag, fix the version, and try again.
+Within about a minute the **Build** workflow (see the **Actions** tab) attaches `Reciprocal_<pluginVersion>.jar` to the release's **Assets**. If the tag doesn't match `pluginVersion`, the workflow fails and nothing is attached: delete the release and its tag, fix the version, and try again.
 
-The jar of a pre-release such as `v0.4.0-beta1` is named `Reciprocal_0.4.0-beta1.jar`, but the version BiglyBT sees inside it is `0.4.0`, because BiglyBT only accepts plain numeric versions.
+BiglyBT only accepts plain numeric versions, and its installer rejects a jar whose file name doesn't match the version inside it. So the jar of a pre-release such as `v0.4.0-beta1` is still named `Reciprocal_0.4.0.jar`; the `-beta1` label only appears on the release itself.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the design and roadmap.

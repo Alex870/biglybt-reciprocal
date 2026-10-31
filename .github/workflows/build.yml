@@ -36,8 +36,7 @@ jobs:
       - name: Build BiglyBT API jar
         run: scripts/build-biglybt-jar.sh .biglybt-src
 
-      - name: Work out release name
-        id: release
+      - name: Check release tag matches version
         run: |
           version=$(sed -n 's/^pluginVersion=//p' gradle.properties)
           if [[ "$GITHUB_EVENT_NAME" == release ]]; then
@@ -47,13 +46,10 @@ jobs:
               echo "::error::Release tag $GITHUB_REF_NAME does not match pluginVersion=$version in gradle.properties"
               exit 1
             fi
-          else
-            name="$version"
           fi
-          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Build and test
-        run: ./gradlew build --no-daemon -PreleaseName=${{ steps.release.outputs.name }}
+        run: ./gradlew build --no-daemon
 
       - uses: actions/upload-artifact@v4
         with:
