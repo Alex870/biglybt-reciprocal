@@ -105,19 +105,18 @@ This is a Gradle project that compiles against BiglyBT's `BiglyBT.jar` (not redi
 
 ### Publishing a release (maintainer)
 
-Releases are built by GitHub Actions; there is no need to upload jars by hand or commit them to the repository.
+Releases are made on the GitHub website; GitHub Actions builds the jar and attaches it. No command line, local copy of the code, or manual upload is needed.
 
-1. Set the new version in `gradle.properties` (`pluginVersion=...`) and add a section for it to `CHANGELOG.md`. Commit and push to `main`.
-2. Create and push a tag named after the version, starting with `v`:
-   ```bash
-   git tag v0.4.0
-   git push origin v0.4.0
-   ```
-3. The **Build** workflow runs on the tag, builds `Reciprocal_0.4.0.jar` and creates a GitHub Release for the tag with the jar attached. Check progress in the repository's **Actions** tab; the release appears on the Releases page when it finishes (about a minute).
-4. Optionally edit the release on GitHub to paste the changelog section into its description (GitHub pre-fills it with a list of commits).
+1. Make sure `pluginVersion` in `gradle.properties` is the version you are releasing and `CHANGELOG.md` has a section for it.
+2. On the repository page, click **Releases** (right-hand column), then **Draft a new release**.
+3. **Choose a tag:** type the version with a `v` in front, e.g. `v0.4.0`, and click **Create new tag: v0.4.0 on publish**.
+4. **Target:** the branch to release from (normally `main`).
+5. **Release title:** e.g. `Reciprocal 0.4.0`. Click **Generate release notes**, or paste the changelog section.
+6. For a test build, use a tag with a suffix such as `v0.4.0-beta1` and tick **Set as a pre-release**, so it isn't shown as **Latest**.
+7. Click **Publish release**.
 
-To publish a test build, use a tag with a suffix such as `v0.4.0-beta1`. It is published as a **pre-release**: downloadable from the full releases list, but not shown as **Latest**, so ordinary users aren't sent to it. The jar is named `Reciprocal_0.4.0-beta1.jar`, but the version BiglyBT sees inside it is `0.4.0`, because BiglyBT only accepts plain numeric versions.
+Within about a minute the **Build** workflow (see the **Actions** tab) attaches `Reciprocal_<tag without v>.jar` to the release's **Assets**. If the tag doesn't match `pluginVersion`, the workflow fails and nothing is attached: delete the release and its tag, fix the version, and try again.
 
-The tag must match `pluginVersion` in `gradle.properties` (with or without a suffix); the build fails otherwise.
+The jar of a pre-release such as `v0.4.0-beta1` is named `Reciprocal_0.4.0-beta1.jar`, but the version BiglyBT sees inside it is `0.4.0`, because BiglyBT only accepts plain numeric versions.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the design and roadmap.

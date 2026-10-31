@@ -3,11 +3,14 @@ name: Build
 on:
   push:
     branches: ['**']
-    tags: ['v*']
   pull_request:
+  # Publishing a release on GitHub (Releases -> Draft a new release -> Publish)
+  # builds the jar and attaches it to that release.
+  release:
+    types: [published]
 
 permissions:
-  contents: write   # needed to attach the jar to a GitHub Release on tags
+  contents: write   # needed to attach the jar to the release
 
 env:
   # BiglyBT version whose API the plugin is compiled against.
@@ -37,11 +40,11 @@ jobs:
         id: release
         run: |
           version=$(sed -n 's/^pluginVersion=//p' gradle.properties)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
             name="${GITHUB_REF_NAME#v}"
-            # The tag must be the version in gradle.properties, optionally with a -suffix.
+            # The release tag must be the version in gradle.properties, optionally with a -suffix.
             if [[ "$name" != "$version" && "$name" != "$version"-* ]]; then
-              echo "::error::Tag $GITHUB_REF_NAME does not match pluginVersion=$version in gradle.properties"
+              echo "::error::Release tag $GITHUB_REF_NAME does not match pluginVersion=$version in gradle.properties"
               exit 1
             fi
           else
@@ -57,11 +60,8 @@ jobs:
           name: reciprocal-jar
           path: build/libs/*.jar
 
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/libs/*.jar
-          generate_release_notes: true
-          # Tags with a suffix (v0.4.0-beta1) are published as pre-releases, not "Latest".
-          prerelease: ${{ contains(github.ref_name, '-') }}
+      - name: Attach jar to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" build/libs/*.jar --clobber --repo "$GITHUB_REPOSITORY"
