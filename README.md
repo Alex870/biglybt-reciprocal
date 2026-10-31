@@ -32,12 +32,30 @@ When the torrent is 100% complete, all limits the plugin set are removed. The ex
 ### How to install
 (as a user - no code compilation required)
 
-1. Download the latest `Reciprocal_X.Y.Z.jar` from this repository's [Releases page](https://github.com/Alex870/biglybt-reciprocal/releases).
-2. In BiglyBT select: **Tools -> Plugins -> Install from file**
-3. Locate the downloaded .jar file and follow the wizard instructions.
-4. Ensure the plugin is enabled: **Tools -> Options -> Plugins -> Reciprocal**
-5. Make sure "Enable" is checked.
-6. Adjust parameters as desired and press the `Save` button.
+#### Step 1: Download the plugin file from Releases
+
+The plugin is a single file named like `Reciprocal_0.4.0.jar`. You get it from this repository's **Releases** page — not from the green **Code** button, and not from the file list at the top of this page.
+
+1. Open the latest release directly: **[github.com/Alex870/biglybt-reciprocal/releases/latest](https://github.com/Alex870/biglybt-reciprocal/releases/latest)**
+   (Or, on the repository's main page, look in the right-hand column for **Releases** and click the version marked **Latest**.)
+2. Scroll down to the **Assets** section at the bottom of the release. If it's collapsed, click **Assets** to expand it.
+3. Click **`Reciprocal_X.Y.Z.jar`** to download it.
+
+   Ignore the two files called **Source code (zip)** and **Source code (tar.gz)**. GitHub adds those to every release automatically; they contain the program's source code, not something BiglyBT can install.
+
+Older versions are on the [full list of releases](https://github.com/Alex870/biglybt-reciprocal/releases), each with its own **Assets** section. Each release also lists what changed in that version (see also [CHANGELOG.md](CHANGELOG.md)).
+
+#### Step 2: Install it in BiglyBT
+
+1. In BiglyBT select: **Tools -> Plugins -> Install from file**
+2. Locate the downloaded `.jar` file and follow the wizard instructions.
+3. Ensure the plugin is enabled: **Tools -> Options -> Plugins -> Reciprocal**
+4. Make sure "Enable" is checked.
+5. Adjust parameters as desired and press the `Save` button.
+
+#### Upgrading
+
+Download the newer `.jar` from the latest release and install it the same way. BiglyBT replaces the old version and your settings are kept.
 
 ### Settings
 
@@ -85,6 +103,19 @@ This is a Gradle project that compiles against BiglyBT's `BiglyBT.jar` (not redi
    - point at it directly: `./gradlew build -PbiglybtJar=/path/to/BiglyBT.jar`
 2. Run `./gradlew build`. The plugin jar is written to `build/libs/`.
 
-The version number lives in `gradle.properties`. Pushing a tag such as `v0.3.0` makes CI build the jar and attach it to a GitHub Release.
+### Publishing a release (maintainer)
+
+Releases are built by GitHub Actions; there is no need to upload jars by hand or commit them to the repository.
+
+1. Set the new version in `gradle.properties` (`pluginVersion=...`) and add a section for it to `CHANGELOG.md`. Commit and push to `main`.
+2. Create and push a tag named after the version, starting with `v`:
+   ```bash
+   git tag v0.4.0
+   git push origin v0.4.0
+   ```
+3. The **Build** workflow runs on the tag, builds `Reciprocal_0.4.0.jar` and creates a GitHub Release for the tag with the jar attached. Check progress in the repository's **Actions** tab; the release appears on the Releases page when it finishes (about a minute).
+4. Optionally edit the release on GitHub to paste the changelog section into its description (GitHub pre-fills it with a list of commits).
+
+To mark a build as a test version, tag it with a suffix such as `v0.4.0-beta1` and, after it is published, tick **Set as a pre-release** when editing the release on GitHub, so it isn't shown as **Latest**.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the design and roadmap.
