@@ -570,7 +570,7 @@ public class Reciprocal implements UnloadablePlugin {
 			cell.setSortValue(-2L);
 			return;
 		}
-		String text = st.reason.label;
+		String text = st.label;
 		if (st.reason.isThrottled()) text += " · " + Engine.rate(st.limit);
 		if (!st.applied) text += p_dry_run.getValue() ? " (dry run)" : " (not applied)";
 		cell.setText(text);

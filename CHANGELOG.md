@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — unreleased
+
+Fixes from the first live trial of 0.4.0-beta1.
+
+- A peer reconnecting with no transfer history was throttled to the minimum rate on connect, then released at the next pass. At connect time BiglyBT doesn't yet know a peer's pieces, so every new connection looked like "has nothing we want". Now only a returning address that owes us (or any peer once the free-upload cap is used up) is limited on connect, and it is judged on its record alone.
+- "Reconnected" log lines and the reconnect count now only include addresses with transfer history.
+- Peers far ahead (e.g. seeds that have sent us gigabytes) are reported as "unlimited (well ahead)" rather than "free start".
+- Clearer labels in the log and the Reciprocal column: "even", "limited (nothing we want)", "deficit, nothing we want".
+- Dropped the redundant "Unlimited uploading for this peer" log line; the per-peer line already gives the reason.
+
 ## 0.4.0 — unreleased
 
 Everything in 0.3.0, plus phases 2–5 of docs/DESIGN.md.

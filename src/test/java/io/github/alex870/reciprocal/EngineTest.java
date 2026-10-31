@@ -83,6 +83,51 @@ class EngineTest {
 		assertEquals(2, e.connections);
 	}
 
+	/** From the trial log: a returning address with nothing exchanged must not be throttled on connect. */
+	@Test
+	void returningPeerWithNoHistoryIsNotTouched() {
+		FakePeer a = new FakePeer("10.0.0.1");
+		engine.onPeerAdded(downloading, a, now);
+		pass(downloading, a);
+		engine.onPeerRemoved(downloading, a, now);
+
+		FakePeer again = new FakePeer("10.0.0.1");
+		again.interesting = false; // BiglyBT doesn't know its pieces yet at connect time
+		engine.onPeerAdded(downloading, again, now);
+		assertEquals(0, again.limit);
+		assertEquals(0, engine.sessionStats().reconnectsRecognised);
+		assertTrue(logLines.stream().noneMatch(l -> l.contains("Reconnected")));
+	}
+
+	@Test
+	void returningPeerInSurplusIsNotTouched() {
+		FakePeer a = new FakePeer("10.0.0.1");
+		engine.onPeerAdded(downloading, a, now);
+		a.sent = 20 * MB;
+		a.received = 50 * MB;
+		pass(downloading, a);
+		engine.onPeerRemoved(downloading, a, now);
+		FakePeer again = new FakePeer("10.0.0.1");
+		engine.onPeerAdded(downloading, again, now);
+		assertEquals(0, again.limit, "left alone until the next pass measures its rate");
+		assertEquals(1, engine.sessionStats().reconnectsRecognised);
+	}
+
+	/** Not knowing a peer's pieces at connect time must not stop a returning leecher being caught. */
+	@Test
+	void returningLeecherCaughtEvenBeforeInterestKnown() {
+		FakePeer a = new FakePeer("10.0.0.1");
+		engine.onPeerAdded(downloading, a, now);
+		a.sent = 60 * MB;
+		pass(downloading, a);
+		engine.onPeerRemoved(downloading, a, now);
+		FakePeer again = new FakePeer("10.0.0.1");
+		again.interesting = false;
+		engine.onPeerAdded(downloading, again, now);
+		assertEquals(MIN, again.limit);
+		assertEquals("deficit", engine.status(again).label);
+	}
+
 	@Test
 	void finalTotalsFoldedOnDisconnect() {
 		FakePeer a = new FakePeer("10.0.0.1");

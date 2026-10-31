@@ -55,6 +55,22 @@ class ReciprocityPolicyTest {
 		assertEquals(UNLIMITED, ReciprocityPolicy.decide(20 * MB, 200 * MB, 0, false, DEFAULTS).limit);
 	}
 
+	/** From the trial log: seeds that have given us lots show as well ahead, not "free start". */
+	@Test
+	void wellAheadTakesPrecedenceOverFreeStart() {
+		Decision d = decide(0, 1400 * MB, 0);
+		assertEquals(Reason.WELL_AHEAD, d.reason);
+	}
+
+	@Test
+	void labels() {
+		assertEquals("limited (nothing we want)", ReciprocityPolicy.decide(0, 0, 0, false, DEFAULTS).label());
+		assertEquals("deficit, nothing we want", ReciprocityPolicy.decide(60 * MB, 0, 0, false, DEFAULTS).label());
+		assertEquals("even", decide(50 * MB, 50 * MB, 0).label());
+		assertEquals("deficit", decide(60 * MB, 10 * MB, 0).label());
+		assertEquals("free start", decide(1 * MB, 0, 0).label());
+	}
+
 	@Test
 	void lanPeersExempt() {
 		Decision d = ReciprocityPolicy.decide(500 * MB, 0, 0, true, true, DEFAULTS);

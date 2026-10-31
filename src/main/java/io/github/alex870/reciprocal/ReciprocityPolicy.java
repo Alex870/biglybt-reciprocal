@@ -105,11 +105,30 @@ public final class ReciprocityPolicy {
 		public final Reason reason;
 		/** Severity (deficit) or margin factor (surplus), 0..1; 0 for other reasons. */
 		public final double factor;
+		/** Throttled because the peer has nothing we want (it cannot currently give back). */
+		public final boolean nothingWanted;
 
 		Decision(int limit, Reason reason, double factor) {
+			this(limit, reason, factor, false);
+		}
+
+		Decision(int limit, Reason reason, double factor, boolean nothingWanted) {
 			this.limit = limit;
 			this.reason = reason;
 			this.factor = factor;
+			this.nothingWanted = nothingWanted;
+		}
+
+		Decision nothingWanted() {
+			return reason.isThrottled() ? new Decision(limit, reason, factor, true) : this;
+		}
+
+		/** Human-readable reason, e.g. "deficit" or "limited (nothing we want)". */
+		public String label() {
+			if (nothingWanted && reason == Reason.SURPLUS && factor == 0) return "limited (nothing we want)";
+			if (nothingWanted) return reason.label + ", nothing we want";
+			if (reason == Reason.SURPLUS && factor == 0) return "even";
+			return reason.label;
 		}
 
 		@Override
@@ -134,6 +153,12 @@ public final class ReciprocityPolicy {
 	 */
 	public static Decision decide(long bytesSent, long bytesReceived, long receiveRateBps,
 			boolean interesting, boolean lanLocal, Settings s) {
+		Decision d = decideInner(bytesSent, bytesReceived, receiveRateBps, interesting, lanLocal, s);
+		return interesting ? d : d.nothingWanted();
+	}
+
+	private static Decision decideInner(long bytesSent, long bytesReceived, long receiveRateBps,
+			boolean interesting, boolean lanLocal, Settings s) {
 		if (lanLocal && s.exemptLan) return new Decision(UNLIMITED, Reason.LAN, 0);
 
 		boolean freeStartAllowed = true;
@@ -150,13 +175,13 @@ public final class ReciprocityPolicy {
 			receiveRateBps = 0; // they cannot be sending us anything useful
 		}
 
-		if (freeStartAllowed && s.startThresholdBytes > 0 && bytesSent <= s.startThresholdBytes) {
-			return new Decision(UNLIMITED, Reason.FREE_START, 0);
-		}
-
 		double rate = Math.max(0, receiveRateBps);
 		double balance = (double) bytesReceived - (double) bytesSent; // > 0: peer has given us more
 		if (balance >= s.ignoreMarginBytes) return new Decision(UNLIMITED, Reason.WELL_AHEAD, 0);
+
+		if (freeStartAllowed && s.startThresholdBytes > 0 && bytesSent <= s.startThresholdBytes) {
+			return new Decision(UNLIMITED, Reason.FREE_START, 0);
+		}
 
 		if (balance < 0) {
 			// 0 (barely behind) .. 1 (behind by the whole margin or more)

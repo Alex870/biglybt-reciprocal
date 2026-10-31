@@ -108,12 +108,14 @@ final class Engine<P> {
 		final long balance;
 		final int limit;
 		final Reason reason;
+		final String label;
 		final boolean applied;
 
-		PeerStatus(long balance, int limit, Reason reason, boolean applied) {
+		PeerStatus(long balance, int limit, Reason reason, String label, boolean applied) {
 			this.balance = balance;
 			this.limit = limit;
 			this.reason = reason;
+			this.label = label;
 			this.applied = applied;
 		}
 	}
@@ -179,9 +181,11 @@ final class Engine<P> {
 		Conn c = track(t, peer, now);
 		if (!t.downloading || !config.adjustOnConnect) return;
 		Ledger.Entry e = ledger.find(t.hash, c.ip);
-		boolean known = e != null && e.connections > 1;
+		// Only act early for a returning address that owes us, or once free starts have run out.
+		// Anyone else is handled at the next pass, when BiglyBT knows which pieces it has.
+		boolean returningInDeficit = e != null && e.connections > 1 && e.balance() < 0;
 		boolean capExhausted = ledger.unreciprocated(t.hash) >= config.freeUploadCap(t.size);
-		if (known || capExhausted) {
+		if (returningInDeficit || capExhausted) {
 			decideAndApply(t, peer, c, config.forTorrent(t.size, capExhausted), "on connect");
 		}
 	}
@@ -270,7 +274,7 @@ final class Engine<P> {
 		conns.put(peer, c);
 		Ledger.Entry e = ledger.get(t.hash, c.ip, now);
 		e.connections++;
-		if (e.connections > 1) {
+		if (e.connections > 1 && (e.sent > 0 || e.received > 0)) { // only reconnects with history matter
 			stats.reconnectsRecognised++;
 			if (log.on(LOG_PEERS)) {
 				log.log(c.ip + "\tReconnected (connection " + e.connections + "), ledger delta = " + mb(e.balance()) + ".");
@@ -312,7 +316,10 @@ final class Engine<P> {
 	private Decision decideAndApply(Torrent t, P peer, Conn c, ReciprocityPolicy.Settings s, String when) {
 		Ledger.Entry e = ledger.get(t.hash, c.ip, c.lastTime);
 		long rate = c.rate >= 0 ? c.rate : Math.max(0, access.currentReceiveRate(peer));
-		Decision d = ReciprocityPolicy.decide(e.sent, e.received, rate, access.interesting(peer), access.lanLocal(peer), s);
+		// At connect time BiglyBT does not yet know which pieces the peer has, so "interesting" is
+		// meaningless; judge the peer on its ledger record alone.
+		boolean interesting = when != null || access.interesting(peer);
+		Decision d = ReciprocityPolicy.decide(e.sent, e.received, rate, interesting, access.lanLocal(peer), s);
 		c.lastDecision = d;
 		logDecision(c, e, rate, d);
 
@@ -337,7 +344,7 @@ final class Engine<P> {
 
 	private void logDecision(Conn c, Ledger.Entry e, long rate, Decision d) {
 		if (log.on(LOG_PEERS) && d.reason != Reason.NOT_INTERESTING && d.reason != Reason.LAN) {
-			log.log(c.ip + "\tdown-up delta = " + mb(e.balance()) + ", receive rate = " + bps(rate) + ", " + d.reason.label);
+			log.log(c.ip + "\tdown-up delta = " + mb(e.balance()) + ", receive rate = " + bps(rate) + ", " + d.label());
 		}
 		if (log.on(LOG_DEFICIT) && (d.reason == Reason.DEFICIT || d.reason == Reason.EXTREME_DEFICIT)) {
 			log.log(c.ip + "\tDeficit - severity = " + f2(d.factor) + ", upload limit = " + rate(d.limit));
@@ -345,8 +352,6 @@ final class Engine<P> {
 		if (log.on(LOG_SURPLUS)) {
 			if (d.reason == Reason.SURPLUS) {
 				log.log(c.ip + "\tSurplus - margin factor = " + f2(d.factor) + ", upload limit = " + rate(d.limit));
-			} else if (!d.reason.isThrottled()) {
-				log.log(c.ip + "\tUnlimited uploading for this peer (" + d.reason.label + ").");
 			}
 		}
 	}
@@ -375,8 +380,8 @@ final class Engine<P> {
 		if (c == null) return null;
 		Ledger.Entry e = ledger.find(c.torrent, c.ip);
 		long balance = e == null ? 0 : e.balance();
-		if (c.lastDecision == null) return new PeerStatus(balance, ReciprocityPolicy.UNLIMITED, null, false);
-		return new PeerStatus(balance, c.lastDecision.limit, c.lastDecision.reason, c.applied);
+		if (c.lastDecision == null) return new PeerStatus(balance, ReciprocityPolicy.UNLIMITED, null, null, false);
+		return new PeerStatus(balance, c.lastDecision.limit, c.lastDecision.reason, c.lastDecision.label(), c.applied);
 	}
 
 	synchronized TorrentSummary summary(String torrentHash) {
