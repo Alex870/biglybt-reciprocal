@@ -1,6 +1,6 @@
 # Reciprocal — Design & Roadmap
 
-Status: draft · Covers plugin version 0.2.7 → 1.0
+Status: Phases 0–1 implemented in 0.3.0 · Covers plugin version 0.2.7 → 1.0
 
 ## 1. Purpose
 
@@ -47,7 +47,7 @@ Every `check_secs` (default 30 s), for each torrent in `ST_DOWNLOADING`, for eac
 | B4 | timer loop | `bytesToHex(peer.getId())` runs unconditionally; a null ID would throw, and no exception handling exists, aborting the pass for remaining peers. |
 | B5 | seeding branch | Overwrites every peer's limit to unlimited each pass, including user-set limits. |
 | B6 | disable/unload | Limits set by the plugin persist after disable; no `UnloadablePlugin`. |
-| B7 | logging | "Action:" lines logged regardless of debug; log area grows without bound. |
+| B7 | logging | "Action:" lines logged regardless of debug, adding noise. (BiglyBT already caps the log area at ~60K characters, so memory use is bounded.) |
 | B8 | UI | "Make adjustments to new clients immediately" is shown but does nothing. |
 | G1 | `isInteresting()` gate | Peers with nothing we want get unlimited upload — the largest budget leak. |
 | G2 | per-connection stats | Reconnecting resets the ledger and grants a fresh free start. |
@@ -64,7 +64,7 @@ The feature is redesigned in Phase 4 on top of the peer ledger from Phase 3.
 
 ---
 
-## 3. Phase 0 — Repository hygiene
+## 3. Phase 0 — Repository hygiene ✅ (0.3.0)
 
 **Goal:** anyone can clone, build and release the plugin reproducibly.
 
@@ -73,7 +73,7 @@ Tasks
 - Remove committed runtime/build artefacts: `BiglyBT.exe`, `BiglyBT.exe.vmoptions`, `aereg64.dll`, `plugins/azupdater/`, `upnp_trace1.log`, `target/`, `release/*.jar`. (Redistributing BiglyBT binaries also raises licensing questions.)
 - Fix `.gitignore` to cover `target/`, `build/`, `*.log`, IDE files.
 - Add a Gradle build:
-  - BiglyBT core as a `compileOnly` dependency (Maven Central `com.biglybt:biglybt-core` if available for the target version; otherwise a local `libs/` path configured via `gradle.properties`).
+  - BiglyBT as a `compileOnly` dependency. BiglyBT is not published to Maven Central, so the build reads `libs/BiglyBT.jar` (path overridable with `-PbiglybtJar=`). `scripts/build-biglybt-jar.sh` produces that jar from BiglyBT's source for CI and machines without BiglyBT installed.
   - Task producing `Reciprocal_<version>.jar` containing `plugin.properties` and message bundles.
   - Single version source: `gradle.properties` → filtered into `plugin.properties`.
 - Replace the machine-specific `.classpath` (Eclipse can import the Gradle project).
@@ -83,7 +83,7 @@ Tasks
 
 Done when: `./gradlew build` produces an installable jar on a clean machine and CI is green.
 
-## 4. Phase 1 — Correctness
+## 4. Phase 1 — Correctness ✅ (0.3.0)
 
 **Goal:** the existing algorithm behaves as documented, with no accidental "unlimited" outcomes.
 
@@ -95,14 +95,16 @@ Done when: `./gradlew build` produces an installable jar on a clean machine and 
 | B4 | Compute peer ID only when logging; null-safe. Wrap each peer's processing in try/catch and log once per error type. |
 | B5 | Only reset peers whose limit the plugin set (see Phase 2 ownership tracking). |
 | B6 | On disable or unload, restore every limit the plugin set. Implement `UnloadablePlugin`. |
-| B7 | "Action:" lines become debug-level; cap the log area (e.g. keep last N lines). |
+| B7 | "Action:" lines only at log level ≥ 1. |
 | B8 | Hide the checkbox until Phase 4. |
-| D1 | Decide: keep "disable at extreme deficit" (and document it) or always floor at `min_ul_rate`. Recommendation: make it a setting, default floor. |
+| D1 | New setting `disable_extreme` (default off = floor at `min_ul_rate`). |
 | — | Merge `debug` + `debug_level` into one level setting (0 = off). |
 
-Done when: unit tests (Phase 2) cover each fixed case; manual run shows no peer flipping to unlimited at balance 0.
+Done when: unit tests cover each fixed case; manual run shows no peer flipping to unlimited at balance 0.
 
-## 5. Phase 2 — Restructure
+**Implementation note:** fixing B2/B5/B6 needed parts of Phase 2 early: the limit calculation is already a pure function (`ReciprocityPolicy`) with unit tests, and limit ownership is tracked by `LimitController`. Ownership is simpler than first planned: the plugin only adopts peers whose limit is still the default (unlimited), so "restore" always means "set back to unlimited", and any peer whose limit changes behind its back is left alone for the rest of that connection.
+
+## 5. Phase 2 — Restructure (partly done in 0.3.0)
 
 **Goal:** separate decision logic from BiglyBT plumbing so it can be tested and evolved.
 
@@ -133,21 +135,21 @@ Decision decide(PeerSnapshot peer, TorrentSnapshot torrent, Settings s);
 
 The policy never returns a raw `0`/`-1`; translation to BiglyBT's sentinel values happens only in `LimitController`.
 
-### Ownership tracking
+### Ownership tracking (done in 0.3.0)
 
-`LimitController` keeps `Map<Peer, Integer /*limit before we touched it*/>`. It:
-- records the original limit the first time it changes a peer,
-- skips peers whose current limit differs from the last value it set (user/other plugin changed it),
-- restores originals on completion, disable, or unload,
+`LimitController` keeps `Map<Peer, Integer /*limit we last set*/>` plus a hands-off set. It:
+- adopts a peer only if its limit is still the default (unlimited),
+- releases a peer whose current limit differs from the last value it set (user/other plugin changed it),
+- lifts its limits on completion, disable, or unload,
 - drops entries when peers disconnect.
 
 ### API
 
-Replace `PeerStatsImpl`/`PEPeerStats` (internal) with the public plugin interface: `Peer.getRateLimitBytes(boolean upload)` / `Peer.setRateLimitBytes(boolean upload, int bytes)` and `PeerStats` totals/rates. Verify each against the targeted BiglyBT version; keep any remaining internal access isolated in one adapter class.
+Since 0.3.0 the plugin uses the public `PeerStats` API (`getTotalSent`, `getTotalReceived`, `getUploadRateLimit`, `setUploadRateLimit` — public since 4.7.0.1 of the old Vuze API). The one remaining internal call is the **smoothed** receive rate (`PEPeerStats.getSmoothDataReceiveRate`), which the public API lacks; it falls back to `PeerStats.getDownloadAverage()`. Remaining work: move this into one adapter class, or compute an average rate from the change in `getTotalReceived` between passes and drop the internal dependency entirely.
 
 ### Tests
 
-JUnit tests for `ReciprocityPolicy` covering: below start threshold, above margin, deficit gradient, extreme deficit, positive gradient, balance exactly 0 with zero rate (B2), non-interesting peer, LAN peer, free-upload cap exhausted.
+JUnit tests (started in 0.3.0) for `ReciprocityPolicy` covering: below start threshold, above margin, deficit gradient, extreme deficit, positive gradient, balance exactly 0 with zero rate (B2), non-interesting peer, LAN peer, free-upload cap exhausted.
 
 Done when: policy has full branch coverage and the plugin runs with no `pifimpl` imports outside the adapter.
 
@@ -244,7 +246,7 @@ Done when: a user can tell from the UI alone whether the quota is on track to la
 | `start_threshold` | MB or % | min(10 MB, 1 %) | 3 |
 | `ignore_margin` | MB or % | 100 MB | 3 |
 | `min_ul_rate` | KiB/s > 0 | 0.5 | 1 |
-| `disable_at_extreme_deficit` | bool | off | 1 |
+| `disable_extreme` | bool | off | 1 |
 | `non_interesting_policy` | enum | `min_rate` | 3 |
 | `free_upload_cap_pct` | int % | 20 | 3 |
 | `ledger_ttl_hours` | int | 24 | 3 |
@@ -255,7 +257,7 @@ Done when: a user can tell from the UI alone whether the quota is on track to la
 
 ## 10. Risks & open questions
 
-- **Public API coverage:** confirm the public plugin interface exposes per-peer upload limits and smoothed receive rate in the target BiglyBT version; otherwise keep a thin internal adapter.
+- **Public API coverage:** per-peer upload limits are public; the smoothed receive rate is not (see Phase 2).
 - **Shared IP collisions** in the ledger (NAT/VPN). Mitigated by client-name keying and TTL; worth measuring.
 - **Default for non-interesting peers:** `min_rate` changes behaviour for existing users; call it out in the changelog.
 - **Minimum supported BiglyBT version** to declare in `plugin.properties`.

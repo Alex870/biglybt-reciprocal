@@ -1,2 +1,0 @@
-Ignore experimental feature checkbox: "Make adjustments to new clients immediately"
-It is not correctly functioning.

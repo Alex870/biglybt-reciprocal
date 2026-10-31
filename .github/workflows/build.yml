@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write   # needed to attach the jar to a GitHub Release on tags
+
+env:
+  # BiglyBT version whose API the plugin is compiled against.
+  BIGLYBT_REF: v4.1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: BiglySoftware/BiglyBT
+          ref: ${{ env.BIGLYBT_REF }}
+          path: .biglybt-src
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build BiglyBT API jar
+        run: scripts/build-biglybt-jar.sh .biglybt-src
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reciprocal-jar
+          path: build/libs/*.jar
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/*.jar
+          generate_release_notes: true

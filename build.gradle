@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+}
+
+group = 'io.github.alex870'
+version = project.pluginVersion
+
+// Target Java 8 bytecode so the plugin loads on any BiglyBT install (build with JDK 11+).
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:all,-options', '-proc:none']
+}
+
+repositories {
+    mavenCentral()
+}
+
+def biglybt = file(project.biglybtJar)
+
+dependencies {
+    // Provided by BiglyBT at runtime; never bundled into the plugin jar.
+    compileOnly files(biglybt)
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('compileJava') {
+    doFirst {
+        if (!biglybt.exists()) {
+            throw new GradleException("BiglyBT jar not found at '${biglybt}'. " +
+                "Copy BiglyBT.jar from your BiglyBT install into libs/, or pass -PbiglybtJar=/path/to/BiglyBT.jar")
+        }
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('plugin.properties') {
+        expand(version: project.version)
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jar {
+    archiveFileName = "Reciprocal_${project.version}.jar"
+}
