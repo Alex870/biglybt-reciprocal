@@ -13,9 +13,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 cp_libs="$(find "$src/core/lib" -name '*.jar' -printf '%p:' 2>/dev/null || true)"
-javac -proc:none -nowarn -encoding UTF-8 --release 8 \
+if ! javac -proc:none -nowarn -encoding UTF-8 --release 8 \
   -cp "$cp_libs" -sourcepath "$src/core/src" -d "$work/classes" \
-  $(find "$root/src/main/java" -name '*.java') 2>&1 | grep -v '^Note:' || true
+  $(find "$root/src/main/java" -name '*.java') 2> "$work/javac.log"; then
+  grep -v '^Note:' "$work/javac.log" >&2
+  echo "javac failed" >&2
+  exit 1
+fi
 
 rm -rf "$work/classes/io"   # drop the plugin's own classes
 mkdir -p "$root/libs"

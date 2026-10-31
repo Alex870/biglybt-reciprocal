@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 — unreleased
+
+Everything in 0.3.0, plus phases 2–5 of docs/DESIGN.md.
+
+### Budget protection
+- **Peers that have nothing we want are no longer given unlimited upload** (the biggest leak in 0.2.x). By default they get no free start and are limited like any other peer; credit they have already earned is kept. New setting "Peers that have nothing we want" also offers a free-start allowance or the old unlimited behaviour.
+- **Peers are remembered across reconnects.** Totals are kept per torrent and IP address, so disconnecting no longer wipes a peer's record or earns it a new free start. Entries are forgotten after 24 hours unseen (configurable) or when the torrent completes; optionally saved across restarts.
+- **Free-upload cap per torrent:** once unreciprocated upload reaches 20% of the torrent size (configurable, 0 = off), free starts end for that torrent.
+- The free start and the "unlimited when ahead" margin can be scaled to torrent size; by default the free start is the smaller of 10 MB and 1% of the torrent.
+- Peers on the local network are never limited (configurable).
+
+### Reacting to peers
+- A returning peer's standing is applied the moment it connects, instead of at the next pass (replaces the old non-working "adjust on new" checkbox).
+- Limits are lifted the moment a torrent stops downloading.
+- Turning the plugin on or off takes effect immediately; the timer runs at the update interval instead of waking every second.
+
+### Visibility
+- New columns: **Reciprocal** and **Reciprocal Delta** in the Peers table, **Reciprocal Budget** in the torrents tables (upload so far vs your budget, red when projected to exceed it).
+- Session totals in the plugin view's status line.
+- **Dry run** mode: logs what it would do without applying limits.
+
+### Internal
+- No longer uses BiglyBT internal classes; the receive rate is measured from the ledger.
+- Logic split into `Engine`, `Ledger`, `ReciprocityPolicy` and `LimitController`, with 43 unit tests.
+
 ## 0.3.0 — unreleased
 
 ### Fixed

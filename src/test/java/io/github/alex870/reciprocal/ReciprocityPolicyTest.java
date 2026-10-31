@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 import io.github.alex870.reciprocal.ReciprocityPolicy.Decision;
+import io.github.alex870.reciprocal.ReciprocityPolicy.NonInteresting;
 import io.github.alex870.reciprocal.ReciprocityPolicy.Reason;
 import io.github.alex870.reciprocal.ReciprocityPolicy.Settings;
 
@@ -22,10 +23,61 @@ class ReciprocityPolicyTest {
 	}
 
 	@Test
-	void notInterestingIsUnlimited() {
-		Decision d = ReciprocityPolicy.decide(500 * MB, 0, 0, false, DEFAULTS);
+	void notInterestingUnlimitedPolicy() {
+		Settings s = DEFAULTS.withNonInteresting(NonInteresting.UNLIMITED);
+		Decision d = ReciprocityPolicy.decide(500 * MB, 0, 0, false, s);
 		assertEquals(UNLIMITED, d.limit);
 		assertEquals(Reason.NOT_INTERESTING, d.reason);
+	}
+
+	/** G1: by default a peer with nothing we want gets no free start and no unlimited upload. */
+	@Test
+	void notInterestingMinRatePolicyByDefault() {
+		Decision fresh = ReciprocityPolicy.decide(0, 0, 50_000, false, DEFAULTS);
+		assertEquals(MIN, fresh.limit);
+		Decision leech = ReciprocityPolicy.decide(500 * MB, 0, 50_000, false, DEFAULTS);
+		assertEquals(MIN, leech.limit);
+	}
+
+	@Test
+	void notInterestingAllowancePolicy() {
+		Settings s = DEFAULTS.withNonInteresting(NonInteresting.ALLOWANCE);
+		assertEquals(UNLIMITED, ReciprocityPolicy.decide(5 * MB, 0, 0, false, s).limit);
+		assertEquals(MIN, ReciprocityPolicy.decide(20 * MB, 0, 50_000, false, s).limit);
+	}
+
+	/** A peer that gave a lot earlier keeps its credit even when it has nothing more we want. */
+	@Test
+	void notInterestingPeerKeepsEarnedCredit() {
+		Decision ahead = ReciprocityPolicy.decide(20 * MB, 70 * MB, 0, false, DEFAULTS);
+		assertEquals(Reason.SURPLUS, ahead.reason);
+		assertEquals(50 * 1024, ahead.limit);
+		assertEquals(UNLIMITED, ReciprocityPolicy.decide(20 * MB, 200 * MB, 0, false, DEFAULTS).limit);
+	}
+
+	@Test
+	void lanPeersExempt() {
+		Decision d = ReciprocityPolicy.decide(500 * MB, 0, 0, true, true, DEFAULTS);
+		assertEquals(Reason.LAN, d.reason);
+		assertEquals(UNLIMITED, d.limit);
+		assertEquals(MIN, ReciprocityPolicy.decide(500 * MB, 0, 0, true, true, DEFAULTS.withExemptLan(false)).limit);
+	}
+
+	@Test
+	void noFreeStartWhenThresholdZero() {
+		Settings s = DEFAULTS.withoutFreeStart();
+		Decision d = ReciprocityPolicy.decide(0, 0, 0, true, s);
+		assertEquals(Reason.SURPLUS, d.reason);
+		assertEquals(MIN, d.limit);
+	}
+
+	@Test
+	void scaledThresholds() {
+		long size = 500 * MB;
+		assertEquals(5 * MB, ReciprocityPolicy.scaledThreshold(10, 1, size, 0), 1);        // 1% of 500 MB < 10 MB
+		assertEquals(10 * MB, ReciprocityPolicy.scaledThreshold(10, 1, 100_000 * MB, 0), 1); // MB is smaller
+		assertEquals(10 * MB, ReciprocityPolicy.scaledThreshold(10, 0, size, 0), 1);       // pct off
+		assertEquals(MB, ReciprocityPolicy.scaledThreshold(100, 1, 10 * MB, MB), 1);       // floor
 	}
 
 	@Test

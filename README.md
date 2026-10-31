@@ -18,6 +18,13 @@ This plugin for BiglyBT (formerly Azureus, Vuze) does the following for each pee
   - **Peer has given more than they took:** the upload limit is set above their rate. The other side sees the higher rate and raises its own, so the two level out at the highest rate both can support.
 - Peers that send nothing are throttled to a minimum rate (0.5 KiB/s by default). This leaves them the option to reciprocate later, but prevents significant leeching. Optionally, upload can be switched off entirely for peers in near-total deficit.
 
+It also closes the common ways leechers slip through:
+
+- **Peers that have nothing you want** (so can't give anything back) are limited too, instead of getting unlimited upload. Credit a peer has already earned is kept.
+- **Reconnecting doesn't reset anything.** The plugin remembers what it has exchanged with each address on each torrent, so a leecher can't disconnect and come back for another free start. A returning peer is limited the moment it reconnects.
+- **Free starts are capped per torrent.** Once unreciprocated upload on a torrent reaches 20% of its size, no more free starts are given on it.
+- Peers on your local network are never limited.
+
 When the torrent is 100% complete, all limits the plugin set are removed. The expectation is that you already have a maximum share ratio set in BiglyBT, so the torrent has a natural end point, and you reach it as fast as possible once limits are lifted. Limits set by you or other plugins are never changed.
 
 ------------
@@ -36,13 +43,35 @@ When the torrent is 100% complete, all limits the plugin set are removed. The ex
 
 | Setting | Default | Meaning |
 |---|---|---|
+| **General** | | |
 | Enable | on | Turning it off lifts every limit the plugin set. |
 | Logging level | 0 | 0 = off, 1 = limit changes, 2 = one line per peer, 3–5 = increasing detail. |
 | Peer update interval | 30 s | How often limits are recalculated. |
-| Allow unlimited upload rate when peer delta exceeds | 100 MB | Peers this far ahead are not limited. |
-| Ignore peers when upload total below | 10 MB | Free start before limits apply. |
-| Minimum upload rate for throttled peers | 0.5 KiB/s | Must be greater than 0. |
-| Stop uploading entirely to peers in near-total deficit | off | If off, such peers get the minimum rate. |
+| Dry run | off | Work out and log limits without applying them. |
+| **Per-peer limits** | | |
+| Free start | 10 MB | Upload unlimited until this much has been sent to a peer (0 = no free start). |
+| ... or % of torrent size | 1% | If smaller, used instead (0 = off). |
+| Unlimited when peer delta exceeds | 100 MB | Peers this far ahead are not limited. |
+| ... or % of torrent size | 0% | If smaller, used instead (0 = off). |
+| Minimum upload rate | 0.5 KiB/s | Must be greater than 0. |
+| Stop uploading entirely in near-total deficit | off | If off, such peers get the minimum rate. |
+| **Upload budget** | | |
+| Peers that have nothing we want | throttle, no free start | Or: free start then throttle; or never limit (0.2.x behaviour). |
+| Free-upload cap | 20% | Stop free starts once unreciprocated upload on a torrent reaches this % of its size (0 = no cap). |
+| Never limit LAN peers | on | |
+| Share-ratio budget | 120% | Only used by the budget column. |
+| **Peer memory** | | |
+| Apply standing on connect | on | Limit a returning peer as soon as it connects. |
+| Forget peers after | 24 h | Unseen addresses are forgotten after this long. |
+| Remember across restarts | off | Saves the peer memory to the plugin's folder. |
+
+### Seeing what it does
+
+- **Peers tab:** add the **Reciprocal** column (the plugin's decision and limit for each peer) and **Reciprocal Delta** (received minus sent, across reconnects).
+- **Torrents list:** the **Reciprocal Budget** column shows upload so far vs your budget, e.g. `0.64× of 1.20× at 72%`, and turns red when you're on track to exceed it.
+- **Tools -> Plugins -> Reciprocal** view: the log, with session totals in the status line.
+
+Columns can be added from the table's column setup if they don't appear automatically.
 
 ------------
 

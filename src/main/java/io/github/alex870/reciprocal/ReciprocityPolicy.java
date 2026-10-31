@@ -13,40 +13,91 @@ public final class ReciprocityPolicy {
 	public static final int UNLIMITED = 0;
 	public static final int DISABLED = -1;
 
-	private static final double BYTES_PER_MB = 1024d * 1024d;
+	static final double BYTES_PER_MB = 1024d * 1024d;
 
 	/** Severity above which upload may be switched off entirely (if enabled in settings). */
 	static final double EXTREME_DEFICIT_SEVERITY = 0.99;
 
-	/** Settings that shape the policy. All byte values are bytes, rates are bytes/second. */
+	/** What to do with peers that have nothing we want (so cannot currently give back). */
+	public enum NonInteresting {
+		/** No free start; throttled like any other peer with a current rate of 0. */
+		MIN_RATE,
+		/** Free start applies, then throttled like any other peer with a current rate of 0. */
+		ALLOWANCE,
+		/** Never limited (0.2.x behaviour). */
+		UNLIMITED;
+
+		static NonInteresting parse(String s) {
+			for (NonInteresting v : values()) if (v.name().equalsIgnoreCase(s)) return v;
+			return MIN_RATE;
+		}
+	}
+
+	/** Settings that shape the policy for one torrent. Byte values are bytes, rates bytes/second. */
 	public static final class Settings {
 		final double startThresholdBytes;
 		final double ignoreMarginBytes;
 		final int minRateBps;
 		final boolean disableAtExtremeDeficit;
+		final NonInteresting nonInteresting;
+		final boolean exemptLan;
 
 		/**
-		 * @param startThresholdBytes peers sent no more than this are left unlimited
-		 * @param ignoreMarginBytes   peers ahead by at least this much are left unlimited; must be > 0
+		 * @param startThresholdBytes free start: peers sent no more than this are unlimited; 0 = no free start
+		 * @param ignoreMarginBytes   peers ahead by at least this much are unlimited; must be > 0
 		 * @param minRateBps          floor for any throttled limit; must be > 0
-		 * @param disableAtExtremeDeficit switch upload off for peers in near-total deficit instead of flooring
 		 */
-		public Settings(double startThresholdBytes, double ignoreMarginBytes, int minRateBps, boolean disableAtExtremeDeficit) {
+		public Settings(double startThresholdBytes, double ignoreMarginBytes, int minRateBps,
+				boolean disableAtExtremeDeficit, NonInteresting nonInteresting, boolean exemptLan) {
 			if (!(ignoreMarginBytes > 0)) throw new IllegalArgumentException("ignoreMarginBytes must be > 0");
 			if (minRateBps <= 0) throw new IllegalArgumentException("minRateBps must be > 0");
-			this.startThresholdBytes = startThresholdBytes;
+			this.startThresholdBytes = Math.max(0, startThresholdBytes);
 			this.ignoreMarginBytes = ignoreMarginBytes;
 			this.minRateBps = minRateBps;
 			this.disableAtExtremeDeficit = disableAtExtremeDeficit;
+			this.nonInteresting = nonInteresting;
+			this.exemptLan = exemptLan;
 		}
 
 		public static Settings ofMegabytes(int startThresholdMb, int ignoreMarginMb, int minRateBps, boolean disableAtExtremeDeficit) {
-			return new Settings(startThresholdMb * BYTES_PER_MB, ignoreMarginMb * BYTES_PER_MB, minRateBps, disableAtExtremeDeficit);
+			return new Settings(startThresholdMb * BYTES_PER_MB, ignoreMarginMb * BYTES_PER_MB, minRateBps,
+					disableAtExtremeDeficit, NonInteresting.MIN_RATE, true);
+		}
+
+		/** Same settings with the free start removed (used when a torrent's free-upload cap is used up). */
+		public Settings withoutFreeStart() {
+			return new Settings(0, ignoreMarginBytes, minRateBps, disableAtExtremeDeficit, nonInteresting, exemptLan);
+		}
+
+		public Settings withNonInteresting(NonInteresting n) {
+			return new Settings(startThresholdBytes, ignoreMarginBytes, minRateBps, disableAtExtremeDeficit, n, exemptLan);
+		}
+
+		public Settings withExemptLan(boolean exempt) {
+			return new Settings(startThresholdBytes, ignoreMarginBytes, minRateBps, disableAtExtremeDeficit, nonInteresting, exempt);
 		}
 	}
 
-	/** Why a decision was made; used for logging. */
-	public enum Reason { NOT_INTERESTING, FREE_START, WELL_AHEAD, DEFICIT, EXTREME_DEFICIT, SURPLUS }
+	/** Why a decision was made; used for logging and the UI. */
+	public enum Reason {
+		LAN("exempt (LAN)"),
+		NOT_INTERESTING("unlimited (nothing we want)"),
+		FREE_START("free start"),
+		WELL_AHEAD("unlimited (well ahead)"),
+		DEFICIT("deficit"),
+		EXTREME_DEFICIT("disabled (extreme deficit)"),
+		SURPLUS("surplus");
+
+		public final String label;
+
+		Reason(String label) {
+			this.label = label;
+		}
+
+		public boolean isThrottled() {
+			return this == DEFICIT || this == EXTREME_DEFICIT || this == SURPLUS;
+		}
+	}
 
 	/** The outcome for one peer. */
 	public static final class Decision {
@@ -69,15 +120,39 @@ public final class ReciprocityPolicy {
 
 	private ReciprocityPolicy() {}
 
-	/**
-	 * @param bytesSent       data bytes we have sent to the peer
-	 * @param bytesReceived   data bytes we have received from the peer
-	 * @param receiveRateBps  peer's current (smoothed) send rate to us
-	 * @param interesting     whether the peer has pieces we want
-	 */
+	/** Convenience overload for an interesting, non-LAN peer. */
 	public static Decision decide(long bytesSent, long bytesReceived, long receiveRateBps, boolean interesting, Settings s) {
-		if (!interesting) return new Decision(UNLIMITED, Reason.NOT_INTERESTING, 0);
-		if (bytesSent <= s.startThresholdBytes) return new Decision(UNLIMITED, Reason.FREE_START, 0);
+		return decide(bytesSent, bytesReceived, receiveRateBps, interesting, false, s);
+	}
+
+	/**
+	 * @param bytesSent       data bytes we have sent to the peer (ledger total)
+	 * @param bytesReceived   data bytes we have received from the peer (ledger total)
+	 * @param receiveRateBps  peer's current send rate to us
+	 * @param interesting     whether the peer has pieces we want
+	 * @param lanLocal        whether the peer is on the local network
+	 */
+	public static Decision decide(long bytesSent, long bytesReceived, long receiveRateBps,
+			boolean interesting, boolean lanLocal, Settings s) {
+		if (lanLocal && s.exemptLan) return new Decision(UNLIMITED, Reason.LAN, 0);
+
+		boolean freeStartAllowed = true;
+		if (!interesting) {
+			switch (s.nonInteresting) {
+			case UNLIMITED:
+				return new Decision(UNLIMITED, Reason.NOT_INTERESTING, 0);
+			case MIN_RATE:
+				freeStartAllowed = false;
+				break;
+			case ALLOWANCE:
+				break;
+			}
+			receiveRateBps = 0; // they cannot be sending us anything useful
+		}
+
+		if (freeStartAllowed && s.startThresholdBytes > 0 && bytesSent <= s.startThresholdBytes) {
+			return new Decision(UNLIMITED, Reason.FREE_START, 0);
+		}
 
 		double rate = Math.max(0, receiveRateBps);
 		double balance = (double) bytesReceived - (double) bytesSent; // > 0: peer has given us more
@@ -98,8 +173,8 @@ public final class ReciprocityPolicy {
 		// rate both clients can sustain.
 		double marginFactor = clamp01(balance / s.ignoreMarginBytes); // 0 (even) .. 1 (well ahead)
 		double limit = rate * (1 + 0.5 * marginFactor);
-		// Credit for a peer that is ahead but currently slow or choking us:
-		// 1 KiB/s of upload per MiB of surplus.
+		// Credit for a peer that is ahead but currently slow, choking us, or has nothing we
+		// want: 1 KiB/s of upload per MiB of surplus.
 		double credit = balance / BYTES_PER_MB * 1024;
 		if (limit < credit) limit = credit;
 		return new Decision(floor(limit, s.minRateBps), Reason.SURPLUS, marginFactor);
@@ -115,6 +190,16 @@ public final class ReciprocityPolicy {
 		if (v < 0) return 0;
 		if (v > 1) return 1;
 		return v;
+	}
+
+	/**
+	 * A threshold given in MB, optionally also as a percentage of torrent size. When the
+	 * percentage is > 0 the smaller of the two applies. Never below {@code floorBytes}.
+	 */
+	static double scaledThreshold(int mb, int pct, long torrentSize, double floorBytes) {
+		double bytes = mb * BYTES_PER_MB;
+		if (pct > 0 && torrentSize > 0) bytes = Math.min(bytes, torrentSize * (pct / 100d));
+		return Math.max(floorBytes, bytes);
 	}
 
 	/**

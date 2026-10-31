@@ -71,6 +71,12 @@ final class LimitController<P> {
 		return Result.SET;
 	}
 
+	/** Forgets a peer without touching it (it has disconnected). */
+	synchronized void forget(P peer) {
+		owned.remove(peer);
+		handsOff.remove(peer);
+	}
+
 	/** Restores one peer to unlimited if we own it. Returns true if a limit was lifted. */
 	synchronized boolean release(P peer) {
 		Integer lastSet = owned.remove(peer);

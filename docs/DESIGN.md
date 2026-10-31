@@ -1,6 +1,6 @@
 # Reciprocal — Design & Roadmap
 
-Status: Phases 0–1 implemented in 0.3.0 · Covers plugin version 0.2.7 → 1.0
+Status: all five phases implemented (0.4.0), awaiting real-world trial · Covers plugin version 0.2.7 → 1.0
 
 ## 1. Purpose
 
@@ -104,7 +104,7 @@ Done when: unit tests cover each fixed case; manual run shows no peer flipping t
 
 **Implementation note:** fixing B2/B5/B6 needed parts of Phase 2 early: the limit calculation is already a pure function (`ReciprocityPolicy`) with unit tests, and limit ownership is tracked by `LimitController`. Ownership is simpler than first planned: the plugin only adopts peers whose limit is still the default (unlimited), so "restore" always means "set back to unlimited", and any peer whose limit changes behind its back is left alone for the rest of that connection.
 
-## 5. Phase 2 — Restructure (partly done in 0.3.0)
+## 5. Phase 2 — Restructure ✅ (0.4.0)
 
 **Goal:** separate decision logic from BiglyBT plumbing so it can be tested and evolved.
 
@@ -153,7 +153,19 @@ JUnit tests (started in 0.3.0) for `ReciprocityPolicy` covering: below start thr
 
 Done when: policy has full branch coverage and the plugin runs with no `pifimpl` imports outside the adapter.
 
-## 6. Phase 3 — Budget protection
+**As built (0.4.0):** the components ended up as
+
+```
+Reciprocal       BiglyBT wiring: settings UI, timer, download/peer events, persistence, table columns
+Engine<P>        ledger, cap, decisions, ownership, status for the UI (generic over the peer type, so testable)
+ReciprocityPolicy pure decision function
+LimitController  limit ownership
+Ledger           per-torrent, per-address totals with save/load
+```
+
+A separate Settings/PeerScanner/PluginLog split was not worth it at this size: `Engine.Config` is the settings snapshot and `Engine.Log` the logging interface. The internal API dependency is gone entirely: the receive rate is now measured by the ledger (bytes received between passes ÷ elapsed time), falling back to the public `PeerStats.getDownloadAverage()` for a peer's first pass. `EngineTest` drives the whole engine with fake peers.
+
+## 6. Phase 3 — Budget protection ✅ (0.4.0)
 
 **Goal:** close the remaining leaks that let the share quota be spent on non-reciprocating peers before completion.
 
@@ -209,7 +221,14 @@ The positive-branch generosity (`rate × (1 + 0.5 × balance / margin)`) is unch
 
 Done when: in a test with many short-lived leeching connections, upload sent during download stays within `cap + Σ reciprocated`.
 
-## 7. Phase 4 — Event-driven peer handling
+**As built (0.4.0):**
+- Non-interesting peers keep credit they have already earned: under `min_rate` and `allowance` they are run through the normal rules with a current rate of 0, so a peer that is ahead still gets surplus credit (or unlimited if well ahead), and only peers who are even or behind fall to the minimum rate.
+- The ledger is keyed by IP only. Client name was left out: a leecher can change its client string trivially, and IP collisions within a single swarm should be rare. Revisit if the trial shows NAT/VPN collisions.
+- When the cap is used up, the free start is withdrawn for **all** peers on that torrent, including ones mid-free-start, and new peers are throttled on connect.
+- Defaults: `start_threshold_pct` 1 % (so a 500 MB torrent gets a 5 MB free start), `ignore_margin_pct` 0 (off).
+- Ledger data is dropped when a torrent completes; persistence (off by default) saves every 10 minutes and on unload to `ledger.txt` in the plugin's user directory.
+
+## 7. Phase 4 — Event-driven peer handling ✅ (0.4.0)
 
 **Goal:** apply a known peer's standing the moment it connects; replaces the abandoned "adjust on new" feature.
 
@@ -222,7 +241,9 @@ Done when: in a test with many short-lived leeching connections, upload sent dur
 
 Done when: a peer that disconnects while in deficit and reconnects is throttled within one event, with no free start.
 
-## 8. Phase 5 — Visibility
+**As built (0.4.0):** on connect, a peer is only touched if it has history (a returning address) or the torrent's free-upload cap is used up; otherwise it is left at the default until the next pass. Leaving `ST_DOWNLOADING` lifts limits immediately via a `DownloadListener`. The timer now runs at the check interval (rescheduled when the setting changes) instead of every second, and turning the plugin on or off takes effect immediately.
+
+## 8. Phase 5 — Visibility ✅ (0.4.0)
 
 **Goal:** make the plugin's effect observable so settings can be tuned against the quota.
 
@@ -234,30 +255,41 @@ Done when: a peer that disconnects while in deficit and reconnects is throttled 
 
 Done when: a user can tell from the UI alone whether the quota is on track to last until completion.
 
+**As built (0.4.0):**
+- Peers table: **Reciprocal** (state and limit) and **Reciprocal Delta** (ledger balance) columns.
+- Torrents tables: **Reciprocal Budget** column, e.g. `0.64× of 1.20× at 72% · free 35% · 4/18 limited`. It turns red when uploaded ÷ completed fraction projects past the budget (a simple linear projection); the tooltip has the detail. The budget is a plugin setting (`budget_pct`, default 120 %) rather than read from BiglyBT's share-ratio settings.
+- The plugin view's status line shows session totals: upload sent to deficit peers, surplus peers and unlimited peers, plus reconnects recognised and ledger size.
+- Dry-run mode logs "would set" lines and marks the Reciprocal column "(dry run)".
+- Log export was not added: BiglyBT's log area already keeps history.
+
 ---
 
-## 9. Settings (target state)
+## 9. Settings (as built, 0.4.0)
 
 | Key | Type | Default | Phase |
 |---|---|---|---|
 | `enable` | bool | on | — |
 | `log_level` | int 0–5 | 0 | 1 |
 | `check_secs` | int | 30 | — |
-| `start_threshold` | MB or % | min(10 MB, 1 %) | 3 |
-| `ignore_margin` | MB or % | 100 MB | 3 |
+| `dry_run` | bool | off | 5 |
+| `start_threshold` | MB (0 = no free start) | 10 | — |
+| `start_threshold_pct` | % of size, smaller wins (0 = off) | 1 | 3 |
+| `ignore_margin` | MB | 100 | — |
+| `ignore_margin_pct` | % of size, smaller wins (0 = off) | 0 | 3 |
 | `min_ul_rate` | KiB/s > 0 | 0.5 | 1 |
 | `disable_extreme` | bool | off | 1 |
-| `non_interesting_policy` | enum | `min_rate` | 3 |
-| `free_upload_cap_pct` | int % | 20 | 3 |
+| `non_interesting` | `min_rate` / `allowance` / `unlimited` | `min_rate` | 3 |
+| `free_cap_pct` | % of size (0 = no cap) | 20 | 3 |
+| `exempt_lan` | bool | on | 3 |
+| `budget_pct` | % of size (display only) | 120 | 5 |
+| `adjust_on_connect` | bool | on | 4 |
 | `ledger_ttl_hours` | int | 24 | 3 |
 | `ledger_persist` | bool | off | 3 |
-| `exempt_lan` | bool | on | 3 |
-| `adjust_on_connect` | bool | on | 4 |
-| `dry_run` | bool | off | 5 |
 
 ## 10. Risks & open questions
 
-- **Public API coverage:** per-peer upload limits are public; the smoothed receive rate is not (see Phase 2).
+- **Measured rate vs. smoothed rate:** the rate is now a 30 s average from the ledger rather than BiglyBT's internal smoothed rate. It reacts more slowly to a peer ramping up; shorten `check_secs` if matching feels sluggish.
+- **Untested in a live client:** all behaviour is covered by unit tests with fake peers, but nothing has run inside BiglyBT yet. Watch especially: column rendering, peer events firing for already-connected peers, and the share of upload that still goes to deficit peers.
 - **Shared IP collisions** in the ledger (NAT/VPN). Mitigated by client-name keying and TTL; worth measuring.
 - **Default for non-interesting peers:** `min_rate` changes behaviour for existing users; call it out in the changelog.
 - **Minimum supported BiglyBT version** to declare in `plugin.properties`.
