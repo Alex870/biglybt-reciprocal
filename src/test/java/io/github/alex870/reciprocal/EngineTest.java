@@ -180,6 +180,33 @@ class EngineTest {
 		assertEquals(7000, a.limit);
 	}
 
+	/** After completion the user can set per-peer upload limits and the plugin leaves them alone. */
+	@Test
+	void userCanLimitPeersAfterCompletion() {
+		FakePeer a = new FakePeer("10.0.0.1"), b = new FakePeer("10.0.0.2");
+		a.sent = 60 * MB;
+		b.sent = 60 * MB;
+		pass(downloading, a, b);
+		assertEquals(MIN, a.limit, "limited while downloading");
+
+		engine.onTorrentNotDownloading(seeding, Arrays.asList(a, b));
+		assertEquals(0, a.limit, "our limits lifted at completion");
+		assertEquals(0, b.limit);
+
+		a.limit = 20_000; // user sets a cap on one peer in the Peers tab
+		for (int i = 0; i < 5; i++) pass(seeding, a, b);
+		assertEquals(20_000, a.limit, "user's cap is never overridden while seeding");
+		assertEquals(0, b.limit);
+
+		FakePeer c = new FakePeer("10.0.0.3"); // peer connecting after completion
+		engine.onPeerAdded(seeding, c, now);
+		c.limit = 5_000;
+		pass(seeding, a, b, c);
+		engine.onPeerRemoved(seeding, c, now);
+		assertEquals(5_000, c.limit);
+		assertEquals(0, engine.releaseAll(), "nothing on a completed torrent is ours");
+	}
+
 	@Test
 	void dryRunNeverApplies() {
 		config.dryRun = true;

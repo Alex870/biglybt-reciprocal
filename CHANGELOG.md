@@ -32,7 +32,7 @@ Everything in 0.3.0, plus phases 2–5 of docs/DESIGN.md.
 - Upload/download totals were rounded down to whole MB before comparing, so the balance could be off by up to 1 MB and often read as exactly 0.
 - The minimum upload rate accepted 0, negative numbers, `NaN` and `Infinity`; it must now be a number greater than 0.
 - An error with one peer (for example a missing peer ID) could stop the whole pass; errors are now isolated per peer and logged once.
-- Limits set by you or other plugins are no longer overwritten. Previously every peer on a completed torrent was reset to unlimited on every pass.
+- Limits set by you or other plugins are no longer overwritten. Previously every peer on a completed torrent was reset to unlimited on every pass, so per-peer upload limits set in the UI after completion were wiped within 30 seconds. Now you can set upload speeds freely once a torrent is complete.
 - Turning the plugin off, or unloading it, now lifts every limit it set.
 
 ### Changed

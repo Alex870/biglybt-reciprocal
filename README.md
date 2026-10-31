@@ -25,7 +25,9 @@ It also closes the common ways leechers slip through:
 - **Free starts are capped per torrent.** Once unreciprocated upload on a torrent reaches 20% of its size, no more free starts are given on it.
 - Peers on your local network are never limited.
 
-When the torrent is 100% complete, all limits the plugin set are removed. The expectation is that you already have a maximum share ratio set in BiglyBT, so the torrent has a natural end point, and you reach it as fast as possible once limits are lifted. Limits set by you or other plugins are never changed.
+When the torrent is 100% complete, all limits the plugin set are removed. The expectation is that you already have a maximum share ratio set in BiglyBT, so the torrent has a natural end point, and you reach it as fast as possible once limits are lifted.
+
+**Your own speed settings always win.** The plugin only ever changes the per-peer upload limits it set itself, and only while a torrent is downloading. After completion you can set upload speeds as you like — globally, per torrent, or per peer in the Peers tab — and the plugin will not override them. (Versions 0.2.x reset every peer on a completed torrent to unlimited every 30 seconds, wiping out any per-peer limit you set.) Global and per-torrent limits are never touched, even while downloading.
 
 ------------
 
