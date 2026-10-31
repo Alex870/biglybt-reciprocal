@@ -46,6 +46,10 @@ test {
     useJUnitPlatform()
 }
 
+// The jar file name can carry a release label such as "0.4.0-beta1" (set by CI from the
+// tag). plugin.version inside the jar stays numeric, as BiglyBT requires.
+def releaseName = project.findProperty('releaseName') ?: project.version
+
 jar {
-    archiveFileName = "Reciprocal_${project.version}.jar"
+    archiveFileName = "Reciprocal_${releaseName}.jar"
 }
